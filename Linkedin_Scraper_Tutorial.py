@@ -9,7 +9,6 @@ from langdetect import detect, DetectorFactory
 DetectorFactory.seed = 0
 
 # Configuración básica
-title = "developer"
 location = "Spain"
 csv_file = 'jobs.csv'
 ultimo_dia = 'r86400'
@@ -19,6 +18,30 @@ time_filter = ultimo_dia
 max_jobs_to_scrap = 300
 jobs_per_page = 10
 max_pages = max_jobs_to_scrap // jobs_per_page
+
+def main():
+    scrape_jobs(
+        title="developer", 
+        location=location, 
+        time_filter=time_filter, 
+        csv_file=csv_file, 
+        max_pages=max_pages, 
+        jobs_per_page=jobs_per_page)
+    scrape_jobs(
+        title="programador", 
+        location=location, 
+        time_filter=time_filter, 
+        csv_file=csv_file, 
+        max_pages=max_pages, 
+        jobs_per_page=jobs_per_page)
+    scrape_jobs(
+        title="python", 
+        location=location, 
+        time_filter=time_filter, 
+        csv_file=csv_file, 
+        max_pages=max_pages, 
+        jobs_per_page=jobs_per_page)
+
 
 # Eliminar archivo CSV si existe
 if os.path.exists(csv_file):
@@ -47,7 +70,7 @@ def handle_request_with_retries(url, max_retries=5):
     return None
 
 # Extraer información de cada trabajo
-def extract_job_details_and_match(base_card_div, job_soup):
+def extract_job_details_and_match(base_card_div, job_soup, title):
     # Verificar que el base_card_div no sea None y que tenga el atributo 'data-entity-urn'
     if base_card_div is None or base_card_div.get("data-entity-urn") is None:
         print("Elemento base-card o data-entity-urn no encontrado, saltando este trabajo.")
@@ -62,9 +85,26 @@ def extract_job_details_and_match(base_card_div, job_soup):
 
     job_description_text = job_description.get_text()
 
+    # Detectar el lenguaje de la descripción del trabajo
     language = detect(job_description_text)
     if language != 'es':
         return None
+
+    # Si el título es "python", aplicar el nuevo filtro
+    if title.lower() == "python":
+        # Buscar la palabra "python" indiferentemente de mayúsculas o minúsculas
+        if re.search(r'python', job_description_text, re.IGNORECASE):
+            job_post = {
+                'job_id': job_id,
+                'job_title': job_soup.find("h2", {"class": "top-card-layout__title"}).text.strip() if job_soup.find("h2", {"class": "top-card-layout__title"}) else None,
+                'company_name': job_soup.find("a", {"class": "topcard__org-name-link"}).text.strip() if job_soup.find("a", {"class": "topcard__org-name-link"}) else None,
+                'time_posted': job_soup.find("span", {"class": "posted-time-ago__text"}).text.strip() if job_soup.find("span", {"class": "posted-time-ago__text"}) else None,
+                'num_applicants': job_soup.find("span", {"class": "num-applicants__caption"}).text.strip() if job_soup.find("span", {"class": "num-applicants__caption"}) else None,
+                'creation_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+            return job_post
+        else:
+            return None  # Si no encuentra la palabra "python", descartar el trabajo
 
     # Patrón para detectar números seguidos de "k"
     pattern_k = re.compile(r'\b(?!401k)\d+k\b', re.IGNORECASE)
@@ -72,6 +112,7 @@ def extract_job_details_and_match(base_card_div, job_soup):
     # Patrón para detectar "euros" y "brutos" en la misma línea
     pattern_euros_brutos = re.compile(r'\beuros\b.*\bbrutos\b|\bbrutos\b.*\beuros\b', re.IGNORECASE)
 
+    # Aplicar los filtros pattern_k y pattern_euros_brutos para otros títulos
     if pattern_k.search(job_description_text) or pattern_euros_brutos.search(job_description_text):
         job_post = {
             'job_id': job_id,
@@ -134,16 +175,11 @@ def scrape_jobs_from_page(page, title, location, time_filter, jobs_per_page):
             continue
 
         job_soup = BeautifulSoup(job_response.text, "html.parser")
-        match_job = extract_job_details_and_match(base_card_div, job_soup)
+        match_job = extract_job_details_and_match(base_card_div, job_soup, title)
         if match_job:
             job_list.append(match_job)
     
     return job_list
-
-def main():
-    scrape_jobs(title="developer", location=location, time_filter=ultimo_dia, csv_file=csv_file, max_pages=max_pages, jobs_per_page=jobs_per_page)
-    scrape_jobs(title="programador", location=location, time_filter=ultimo_dia, csv_file=csv_file, max_pages=max_pages, jobs_per_page=jobs_per_page)
-
 
 if __name__ == "__main__":
     main()
